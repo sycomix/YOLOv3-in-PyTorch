@@ -46,7 +46,9 @@ def post_process(results_raw, nms, conf_thres, nms_thres):
                                     nms_thres=nms_thres)
         result = torch.cat((bboxes, scores.view((-1, 1)), classes.view((-1, 1)).float()), dim=1)
         results.append(result)
-        logging.debug("The dimension of the result after nms is {} for idx {}".format(result.size(), idx))
+        logging.debug(
+            f"The dimension of the result after nms is {result.size()} for idx {idx}"
+        )
     return results
 
 
@@ -162,8 +164,7 @@ def iou(bbox1, bbox2, center=False):
     w_intersect = (torch.min(right1, right2) - torch.max(x1, x2)).clamp(min=0)
     h_intersect = (torch.min(bottom1, bottom2) - torch.max(y1, y2)).clamp(min=0)
     area_intersect = w_intersect * h_intersect
-    iou_ = area_intersect / (area1 + area2 - area_intersect + EPSILON) #add epsilon to avoid NaN
-    return iou_
+    return area_intersect / (area1 + area2 - area_intersect + EPSILON)
 
 
 def iou_one_to_many(bbox1, bboxes2, center=False):
@@ -189,8 +190,7 @@ def iou_one_to_many(bbox1, bboxes2, center=False):
     w_intersect = (torch.min(right1, right2) - torch.max(x1, x2)).clamp(min=0)
     h_intersect = (torch.min(bottom1, bottom2) - torch.max(y1, y2)).clamp(min=0)
     area_intersect = w_intersect * h_intersect
-    iou_ = area_intersect / (area1 + area2 - area_intersect + EPSILON) #add epsilon to avoid NaN
-    return iou_
+    return area_intersect / (area1 + area2 - area_intersect + EPSILON)
 
 
 def argsort(t, reverse=False):

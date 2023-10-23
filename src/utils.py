@@ -38,8 +38,7 @@ def load_classes(path):
     Loads class labels at 'path'
     """
     fp = open(path, "r")
-    names = fp.read().split("\n")[:-1]
-    return names
+    return fp.read().split("\n")[:-1]
 
 
 def init_conv_layer_randomly(m):
@@ -58,8 +57,6 @@ def init_layer_randomly(m):
         init_conv_layer_randomly(m)
     elif isinstance(m, nn.BatchNorm2d):
         init_bn_layer_randomly(m)
-    else:
-        pass
 
 
 def untransform_bboxes(bboxes, scale, padding):

@@ -101,8 +101,11 @@ def noobj_mask_fn(pred: Tensor, target: Tensor):
     ious = iou_batch(pred[..., :4], target[..., :4], center=True) #in cxcywh format
     # for each pred bbox, find the target box which overlaps with it (without zero centered) most, and the iou value.
     max_ious, max_ious_idx = torch.max(ious, dim=2)
-    noobj_indicator = torch.where((max_ious - IGNORE_THRESH) > 0, torch.zeros_like(max_ious), torch.ones_like(max_ious))
-    return noobj_indicator
+    return torch.where(
+        (max_ious - IGNORE_THRESH) > 0,
+        torch.zeros_like(max_ious),
+        torch.ones_like(max_ious),
+    )
 
 
 def noobj_mask_filter(mask_noobj: Tensor, idx_obj_1d: Tensor):
@@ -182,7 +185,7 @@ def pre_process_targets(tgt: Tensor, tgt_len, img_size):
 
     # aggregate processed targets and the corresponding prediction index from different batches in to one dimension
     n_batch = tgt.size(0)
-    n_pred = sum([(img_size // s) ** 2 for s in strides_selection]) * 3
+    n_pred = sum((img_size // s) ** 2 for s in strides_selection) * 3
 
     idx_obj_1d = []
     tgt_t_flat = []
@@ -253,6 +256,6 @@ def iou_batch(bboxes1: Tensor, bboxes2: Tensor, center=False, zero_center=False)
         h_intersect = (torch.min(top1, top2) - torch.max(bottom1, bottom2)).clamp(min=0)
     area_intersect = h_intersect * w_intersect
 
-    iou_ = area_intersect / (area1.unsqueeze(2) + area2.unsqueeze(1) - area_intersect + EPSILON)
-
-    return iou_
+    return area_intersect / (
+        area1.unsqueeze(2) + area2.unsqueeze(1) - area_intersect + EPSILON
+    )

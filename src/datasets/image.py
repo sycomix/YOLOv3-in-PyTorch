@@ -55,7 +55,7 @@ class ImageFolder(Dataset):
     """The ImageFolder Dataset class."""
 
     def __init__(self, folder_path, img_size=416, sort_key=None):
-        self.files = sorted(glob.glob('{}/*.*'.format(folder_path)), key=sort_key)
+        self.files = sorted(glob.glob(f'{folder_path}/*.*'), key=sort_key)
         self.img_shape = (img_size, img_size)
         self._img_size = img_size
         self._transform = default_transform_fn(img_size)

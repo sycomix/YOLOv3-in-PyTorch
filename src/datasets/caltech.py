@@ -61,11 +61,11 @@ class CaltechPedDataset(Dataset):
                             "'all', 'training', 'validation' or a list of custom sets.")
         self.video_set_int = self.video_set_str2int(self.video_set_str)  # get int version of video set
         # get the number of the images in each of the set
-        n_imgs_all_set = json.load(open("{}/attributes.json".format(root)))
+        n_imgs_all_set = json.load(open(f"{root}/attributes.json"))
         self.n_imgs_per_video_loaded_set = [n_imgs_all_set[i] for i in self.video_set_int]
         self.n_imgs_aggregated_loaded_set = [sum(l) for l in self.n_imgs_per_video_loaded_set]
         self.root = root
-        self.annotations = json.load(open("{}/annotations.json".format(root)))
+        self.annotations = json.load(open(f"{root}/annotations.json"))
 
         if transform == 'default':
             self._tf = default_transform_fn(img_size)
@@ -110,10 +110,7 @@ class CaltechPedDataset(Dataset):
             # conf = torch.tensor([1.])
             label = torch.cat((bbox, torch.tensor([1., 1.])))
             labels.append(label)
-        if labels:
-            label_tensor = torch.stack(labels)
-        else:
-            label_tensor = torch.zeros((0, NUM_ATTRIB))
+        label_tensor = torch.stack(labels) if labels else torch.zeros((0, NUM_ATTRIB))
         # if targets:
         #     label_position_tensor = torch.Tensor([elem['pos'] for elem in targets])
         # else:

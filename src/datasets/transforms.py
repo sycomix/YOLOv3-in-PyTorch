@@ -187,10 +187,7 @@ class RandomAdjustImage(object):
 
     @staticmethod
     def get_param(ranges):
-        samples = []
-        for r in ranges:
-            samples.append(random.uniform(*r))
-        return samples
+        return [random.uniform(*r) for r in ranges]
 
     def __call__(self, img):
         b, c, g, h, s = self.get_param([self.brightness, self.contrast, self.gamma, self.hue, self.saturation])
@@ -295,8 +292,7 @@ def _get_affine_matrix(center, angle, translate, scale, shear):
     RSS = np.matrix([[np.cos(angle), -np.sin(angle + shear),       0.],
                      [np.sin(angle),  np.cos(angle + shear),       0.],
                      [           0.,                     0., 1./scale]]) * scale
-    M = T * C * RSS * np.linalg.inv(C)
-    return M
+    return T * C * RSS * np.linalg.inv(C)
 
 
 def _affine_transform_label(label, affine_matrix):

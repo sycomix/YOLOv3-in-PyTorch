@@ -122,8 +122,7 @@ def parse_args():
                         help="INFERENCE ONLY: object detection confidence threshold during inference.")
     parser.add_argument('--nms-thres', dest='nms_thres', type=float, default=0.4,
                         help="INFERENCE ONLY: iou threshold for non-maximum suppression during inference.")
-    _options = parser.parse_args()
-    return _options
+    return parser.parse_args()
 
 
 def config_logging(log_dir, log_file_name, level=logging.WARNING, screen=True):
@@ -142,8 +141,7 @@ def config_device(cpu_only: bool):
             logging.warning('CUDA device is not available. Will use CPU')
     else:
         use_cuda = False
-    _device = torch.device("cuda:0" if use_cuda else "cpu")
-    return _device
+    return torch.device("cuda:0" if use_cuda else "cpu")
 
 
 def load_yolov3_model(weight_path, device, ckpt=False, mode='eval'):
@@ -163,29 +161,36 @@ def load_yolov3_model(weight_path, device, ckpt=False, mode='eval'):
 
 
 def load_dataset(type, img_dir, annot_dir, img_size, batch_size, n_cpu, shuffle, augment, **kwargs):
-    if type == "image_folder":
-        _dataset = ImageFolder(img_dir, img_size=img_size)
-        _collate_fn = None
+    if type == "caltech":
+        _dataset = CaltechPedDataset(img_dir, img_size, **kwargs)
+        _collate_fn = collate_img_label_fn
     elif type == "coco":
         _transform = 'random' if augment else 'default'
         _dataset = CocoDetectionBoundingBox(img_dir, annot_dir, img_size=img_size, transform=_transform)
         _collate_fn = collate_img_label_fn
-    elif type == "caltech":
-        _dataset = CaltechPedDataset(img_dir, img_size, **kwargs)
-        _collate_fn = collate_img_label_fn
+    elif type == "image_folder":
+        _dataset = ImageFolder(img_dir, img_size=img_size)
+        _collate_fn = None
     else:
         raise TypeError("dataset types can only be 'image_folder', 'coco' or 'caltech'.")
-    if _collate_fn is not None:
-        _dataloader = DataLoader(_dataset, batch_size, shuffle, num_workers=n_cpu, collate_fn=_collate_fn)
-    else:
-        _dataloader = DataLoader(_dataset, batch_size, shuffle, num_workers=n_cpu)
-    return _dataloader
+    return (
+        DataLoader(
+            _dataset,
+            batch_size,
+            shuffle,
+            num_workers=n_cpu,
+            collate_fn=_collate_fn,
+        )
+        if _collate_fn is not None
+        else DataLoader(_dataset, batch_size, shuffle, num_workers=n_cpu)
+    )
 
 
 def make_output_dir(out_dir):
     if os.path.exists(out_dir):
         logging.warning(
-            'The output folder {} exists. New output may overwrite the old output.'.format(out_dir))
+            f'The output folder {out_dir} exists. New output may overwrite the old output.'
+        )
     os.makedirs(out_dir, exist_ok=True)
     return
 
@@ -217,9 +222,7 @@ def run_detection(model, dataloader, device, conf_thres, nms_thres):
         end_time = time.time()
         inference_time_both = end_time - start_time
         # print("Total PP time: {:.1f}".format(inference_time_pp*1000))
-        logging.info('Batch {}, '
-                     'Total time: {}s, '.format(batch_i,
-                                                inference_time_both))
+        logging.info(f'Batch {batch_i}, Total time: {inference_time_both}s, ')
         _detection_time_list.append(inference_time_both)
         # _total_time += inference_time_both
 
@@ -228,8 +231,8 @@ def run_detection(model, dataloader, device, conf_thres, nms_thres):
     _detection_time_tensor = torch.tensor(_detection_time_list)
     avg_time = torch.mean(_detection_time_tensor)
     time_std_dev = torch.std(_detection_time_tensor)
-    logging.info('Average inference time (total) is {}s.'.format(float(avg_time)))
-    logging.info('Std dev of inference time (total) is {}s.'.format(float(time_std_dev)))
+    logging.info(f'Average inference time (total) is {float(avg_time)}s.')
+    logging.info(f'Std dev of inference time (total) is {float(time_std_dev)}s.')
     return results
 
 
@@ -253,18 +256,7 @@ def run_training(model, optimizer, dataloader, device, img_size, n_epoch, every_
                 optimizer.step()
 
             logging.info(
-                "[Epoch {}/{}, Batch {}/{}] [Losses: total {}, coord {}, obj {}, noobj {}, class {}]"
-                .format(
-                    epoch_i,
-                    n_epoch,
-                    batch_i,
-                    len(dataloader),
-                    losses[0].item(),
-                    losses[1].item(),
-                    losses[2].item(),
-                    losses[3].item(),
-                    losses[4].item()
-                )
+                f"[Epoch {epoch_i}/{n_epoch}, Batch {batch_i}/{len(dataloader)}] [Losses: total {losses[0].item()}, coord {losses[1].item()}, obj {losses[2].item()}, noobj {losses[3].item()}, class {losses[4].item()}]"
             )
 
             # logging.info(
@@ -281,11 +273,11 @@ def run_training(model, optimizer, dataloader, device, img_size, n_epoch, every_
             # )
 
             if every_n_batch != 0 and (batch_i + 1) % every_n_batch == 0:
-                save_path = "{}/ckpt_epoch_{}_batch_{}.pt".format(ckpt_dir, epoch_i, batch_i)
+                save_path = f"{ckpt_dir}/ckpt_epoch_{epoch_i}_batch_{batch_i}.pt"
                 save_checkpoint_weight_file(model, optimizer, epoch_i, batch_i, losses, save_path)
 
         if (epoch_i + 1) % every_n_epoch == 0:
-            save_path = "{}/ckpt_epoch_{}.pt".format(ckpt_dir, epoch_i)
+            save_path = f"{ckpt_dir}/ckpt_epoch_{epoch_i}.pt"
             save_checkpoint_weight_file(model, optimizer, epoch_i, 0, losses, save_path)
 
     return
@@ -327,9 +319,9 @@ def save_results_as_images(results, output_dir, class_names):
     # Iterate through images and save plot of detections
     for img_i, result in enumerate(results):
         path, detections, _, _ = result
-        logging.info("({}) Image: '{}'".format(img_i, path))
+        logging.info(f"({img_i}) Image: '{path}'")
         # Create plot
-        img_output_filename = '{}/{}.png'.format(output_dir, img_i)
+        img_output_filename = f'{output_dir}/{img_i}.png'
         save_det_image(path, detections, img_output_filename, class_names)
     return
 
@@ -342,14 +334,16 @@ def save_checkpoint_weight_file(model, optimizer, epoch, batch, loss, weight_fil
         'optimizer_state_dict': optimizer.state_dict(),
         'loss': loss
     }, weight_file_path)
-    logging.info("saving model at epoch {}, batch {} to {}".format(epoch, batch, weight_file_path))
+    logging.info(
+        f"saving model at epoch {epoch}, batch {batch} to {weight_file_path}"
+    )
     return
 
 
 def run_yolo_inference(opt):
     # configure logging
     current_datetime_str = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    log_file_name_by_time = current_datetime_str + ".log"
+    log_file_name_by_time = f"{current_datetime_str}.log"
     if options.debug:
         log_level = logging.DEBUG
     elif options.verbose:
@@ -375,12 +369,12 @@ def run_yolo_inference(opt):
     results = run_detection(model, dataloader, dev, opt.conf_thres, opt.nms_thres)
     # post processing
     if opt.save_det:
-        json_path = '{}/{}/detections.json'.format(opt.out_dir, current_datetime_str)
+        json_path = f'{opt.out_dir}/{current_datetime_str}/detections.json'
         make_output_dir(os.path.split(json_path)[0])
         save_results_as_json(results, json_path)
     if opt.save_img:
         class_names = load_classes(opt.class_path)
-        img_path = '{}/{}/img'.format(opt.out_dir, current_datetime_str)
+        img_path = f'{opt.out_dir}/{current_datetime_str}/img'
         make_output_dir(img_path)
         save_results_as_images(results, img_path, class_names)
     return
@@ -389,7 +383,7 @@ def run_yolo_inference(opt):
 def run_yolo_training(opt):
     # configure logging
     current_datetime_str = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    log_file_name_by_time = current_datetime_str + ".log"
+    log_file_name_by_time = f"{current_datetime_str}.log"
     if opt.debug:
         log_level = logging.DEBUG
     elif opt.verbose:
@@ -399,7 +393,7 @@ def run_yolo_training(opt):
     config_logging(opt.log_dir, log_file_name_by_time, level=log_level)
     # configure device
     dev = config_device(opt.cpu_only)
-    ckpt_dir = '{}/{}'.format(opt.ckpt_dir, current_datetime_str)
+    ckpt_dir = f'{opt.ckpt_dir}/{current_datetime_str}'
     os.makedirs(ckpt_dir, exist_ok=True)
     model = load_yolov3_model(opt.weight_path, dev, ckpt=opt.from_ckpt, mode='train')
     finetune_layers = model.yolo_last_n_layers(opt.n_last_layers)

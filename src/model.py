@@ -91,7 +91,7 @@ def make_conv_and_res_block(in_channels, out_channels, res_repeat):
     model = nn.Sequential()
     model.add_module('conv', ConvLayer(in_channels, out_channels, 3, stride=2))
     for idx in range(res_repeat):
-        model.add_module('res{}'.format(idx), ResBlock(out_channels))
+        model.add_module(f'res{idx}', ResBlock(out_channels))
     return model
 
 
@@ -115,38 +115,42 @@ class YoloLayer(nn.Module):
         num_grid = x.size(2)
 
         if self.training:
-            output_raw = x.view(num_batch,
+            return (
+                x.view(
+                    num_batch,
+                    NUM_ANCHORS_PER_SCALE,
+                    NUM_ATTRIB,
+                    num_grid,
+                    num_grid,
+                )
+                .permute(0, 1, 3, 4, 2)
+                .contiguous()
+                .view(num_batch, -1, NUM_ATTRIB)
+            )
+        prediction_raw = x.view(num_batch,
                                 NUM_ANCHORS_PER_SCALE,
                                 NUM_ATTRIB,
                                 num_grid,
-                                num_grid).permute(0, 1, 3, 4, 2).contiguous().view(num_batch, -1, NUM_ATTRIB)
-            return output_raw
-        else:
-            prediction_raw = x.view(num_batch,
-                                    NUM_ANCHORS_PER_SCALE,
-                                    NUM_ATTRIB,
-                                    num_grid,
-                                    num_grid).permute(0, 1, 3, 4, 2).contiguous()
+                                num_grid).permute(0, 1, 3, 4, 2).contiguous()
 
-            self.anchors = self.anchors.to(x.device).float()
-            # Calculate offsets for each grid
-            grid_tensor = torch.arange(num_grid, dtype=torch.float, device=x.device).repeat(num_grid, 1)
-            grid_x = grid_tensor.view([1, 1, num_grid, num_grid])
-            grid_y = grid_tensor.t().view([1, 1, num_grid, num_grid])
-            anchor_w = self.anchors[:, 0:1].view((1, -1, 1, 1))
-            anchor_h = self.anchors[:, 1:2].view((1, -1, 1, 1))
+        self.anchors = self.anchors.to(x.device).float()
+        # Calculate offsets for each grid
+        grid_tensor = torch.arange(num_grid, dtype=torch.float, device=x.device).repeat(num_grid, 1)
+        grid_x = grid_tensor.view([1, 1, num_grid, num_grid])
+        grid_y = grid_tensor.t().view([1, 1, num_grid, num_grid])
+        anchor_w = self.anchors[:, 0:1].view((1, -1, 1, 1))
+        anchor_h = self.anchors[:, 1:2].view((1, -1, 1, 1))
 
-            # Get outputs
-            x_center_pred = (torch.sigmoid(prediction_raw[..., 0]) + grid_x) * self.stride # Center x
-            y_center_pred = (torch.sigmoid(prediction_raw[..., 1]) + grid_y) * self.stride  # Center y
-            w_pred = torch.exp(prediction_raw[..., 2]) * anchor_w  # Width
-            h_pred = torch.exp(prediction_raw[..., 3]) * anchor_h  # Height
-            bbox_pred = torch.stack((x_center_pred, y_center_pred, w_pred, h_pred), dim=4).view((num_batch, -1, 4)) #cxcywh
-            conf_pred = torch.sigmoid(prediction_raw[..., 4]).view(num_batch, -1, 1)  # Conf
-            cls_pred = torch.sigmoid(prediction_raw[..., 5:]).view(num_batch, -1, NUM_CLASSES)  # Cls pred one-hot.
+        # Get outputs
+        x_center_pred = (torch.sigmoid(prediction_raw[..., 0]) + grid_x) * self.stride # Center x
+        y_center_pred = (torch.sigmoid(prediction_raw[..., 1]) + grid_y) * self.stride  # Center y
+        w_pred = torch.exp(prediction_raw[..., 2]) * anchor_w  # Width
+        h_pred = torch.exp(prediction_raw[..., 3]) * anchor_h  # Height
+        bbox_pred = torch.stack((x_center_pred, y_center_pred, w_pred, h_pred), dim=4).view((num_batch, -1, 4)) #cxcywh
+        conf_pred = torch.sigmoid(prediction_raw[..., 4]).view(num_batch, -1, 1)  # Conf
+        cls_pred = torch.sigmoid(prediction_raw[..., 5:]).view(num_batch, -1, NUM_CLASSES)  # Cls pred one-hot.
 
-            output = torch.cat((bbox_pred, conf_pred, cls_pred), -1)
-            return output
+        return torch.cat((bbox_pred, conf_pred, cls_pred), -1)
 
 
 class DetectionBlock(nn.Module):
@@ -181,9 +185,7 @@ class DetectionBlock(nn.Module):
         self.branch = self.conv5(tmp)
         tmp = self.conv6(self.branch)
         tmp = self.conv7(tmp)
-        out = self.yolo(tmp)
-
-        return out
+        return self.yolo(tmp)
 
 
 class DarkNet53BackBone(nn.Module):
@@ -252,32 +254,32 @@ class YoloNetV3(nn.Module):
         tmp1, tmp2, tmp3 = self.darknet(x)
         out1, out2, out3 = self.yolo_tail(tmp1, tmp2, tmp3)
         out = torch.cat((out1, out2, out3), 1)
-        logging.debug("The dimension of the output before nms is {}".format(out.size()))
+        logging.debug(f"The dimension of the output before nms is {out.size()}")
         return out
 
     def yolo_last_layers(self):
-        _layers = [self.yolo_tail.detect1.conv7,
-                   self.yolo_tail.detect2.conv7,
-                   self.yolo_tail.detect3.conv7]
-        return _layers
+        return [
+            self.yolo_tail.detect1.conv7,
+            self.yolo_tail.detect2.conv7,
+            self.yolo_tail.detect3.conv7,
+        ]
 
     def yolo_last_two_layers(self):
-        _layers = self.yolo_last_layers() + \
-                  [self.yolo_tail.detect1.conv6,
-                   self.yolo_tail.detect2.conv6,
-                   self.yolo_tail.detect3.conv6]
-        return _layers
+        return self.yolo_last_layers() + [
+            self.yolo_tail.detect1.conv6,
+            self.yolo_tail.detect2.conv6,
+            self.yolo_tail.detect3.conv6,
+        ]
 
     def yolo_last_three_layers(self):
-        _layers = self.yolo_last_two_layers() + \
-                  [self.yolo_tail.detect1.conv5,
-                   self.yolo_tail.detect2.conv5,
-                   self.yolo_tail.detect3.conv5]
-        return _layers
+        return self.yolo_last_two_layers() + [
+            self.yolo_tail.detect1.conv5,
+            self.yolo_tail.detect2.conv5,
+            self.yolo_tail.detect3.conv5,
+        ]
 
     def yolo_tail_layers(self):
-        _layers = [self.yolo_tail]
-        return _layers
+        return [self.yolo_tail]
 
     def yolo_last_n_layers(self, n):
         try:

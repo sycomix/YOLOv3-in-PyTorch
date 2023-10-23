@@ -63,10 +63,7 @@ class CocoDetectionBoundingBox(CocoDetection):
             conf = torch.tensor([1.])
             label = torch.cat((bbox, conf, one_hot_label))
             labels.append(label)
-        if labels:
-            label_tensor = torch.stack(labels)
-        else:
-            label_tensor = torch.zeros((0, NUM_ATTRIB))
+        label_tensor = torch.stack(labels) if labels else torch.zeros((0, NUM_ATTRIB))
         transformed_img_tensor, label_tensor = self._tf(img, label_tensor)
         label_tensor = xywh_to_cxcywh(label_tensor)
         return transformed_img_tensor, label_tensor, label_tensor.size(0)
@@ -98,7 +95,7 @@ def _delete_coco_empty_category(old_id):
         if old_id > missing_id:
             new_id -= 1
         elif old_id == missing_id:
-            raise KeyError("illegal category ID in coco dataset! ID # is {}".format(old_id))
+            raise KeyError(f"illegal category ID in coco dataset! ID # is {old_id}")
         else:
             break
     return new_id
